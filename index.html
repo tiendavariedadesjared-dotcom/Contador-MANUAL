@@ -926,7 +926,22 @@ function renderComparativo(){
   cmpVisibles = visibles;
 
   const body = el("cmpBody");
-  if(visibles.length===0){ body.innerHTML = `<div class="empty">No hay productos en esta categoría con los filtros actuales.</div>`; return; }
+  if(visibles.length===0){
+    const uds = productos.reduce((s,p)=>s+contadoTotal(p.id),0);
+    const vars = productos.filter(p=>contadoTotal(p.id)>0).length;
+    let msg;
+    if(uds===0){
+      msg = `Todavía no hay conteo cargado. Volvé al conteo y sumá algunas variantes.`;
+    } else if(base.length===0){
+      msg = `Los filtros activos están ocultando todo. Quitá filtros arriba para ver el conteo.`;
+    } else if(cmpFiltro==="dif"){
+      msg = `✓ No hay diferencias con los filtros actuales.<br><br>Contaste <b>${uds}</b> unidades en <b>${vars}</b> variantes y todo coincide con el sistema.<br><br>Tocá <b>“Coinciden”</b> o <b>“Todas”</b> arriba para ver el detalle del conteo.`;
+    } else {
+      msg = `No hay productos en esta categoría con los filtros actuales.`;
+    }
+    body.innerHTML = `<div class="empty">${msg}</div>`;
+    return;
+  }
 
   // Agrupar por modelo (tarjeta), igual que el conteo
   const tagText = {ok:"Coincide",faltan:"Faltan",sobran:"Sobran",nocont:"No contada"};
