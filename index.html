@@ -96,6 +96,19 @@
   .fld select.active{border-color:var(--pitch);background:var(--ok-bg)}
   .filter-panel .clear{margin-top:10px;width:100%;border:1px solid var(--line);background:var(--bg);
     border-radius:9px;padding:9px;font-size:13px;font-weight:700;color:var(--ink-soft)}
+  .filter-sec-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--slate);margin:2px 0 7px}
+  .filter-sec-t.excl{color:var(--amber);margin-top:13px;border-top:1px dashed var(--line);padding-top:11px}
+  .excl-row{display:flex;gap:7px;align-items:stretch}
+  .excl-row select{flex:1;min-width:0;padding:9px 6px;border:1px solid var(--line);border-radius:9px;background:var(--bg);font-size:13px;font-weight:600;color:var(--ink)}
+  .excl-add{flex:0 0 auto;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);border-radius:9px;padding:0 12px;font-size:13px;font-weight:800}
+  .excl-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .excl-chip{display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber);
+    border:1px solid var(--amber);border-radius:999px;padding:3px 6px 3px 10px;font-size:11px;font-weight:700}
+  .excl-chip .x{font-size:14px;font-weight:800}
+  .ab-chip.exc{background:var(--amber-bg);color:var(--amber);border-color:var(--amber)}
+  .cmp-filters .search{margin-bottom:8px}
+  .crow-focus{display:inline-block;margin-top:5px;background:transparent;border:1px solid var(--line);
+    border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;color:var(--ink-soft)}
 
   /* ---------- List ---------- */
   main{padding:6px 12px}
@@ -151,6 +164,28 @@
   .sr-mid .f{color:var(--ink)}
   .sr-mid .t{color:var(--sky)}
   .size-row .cbtns{flex:0 0 auto}
+
+  /* ---------- Contador por lotes (staged) ---------- */
+  .card{align-items:flex-start}
+  .counter2{margin-top:7px;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:7px 8px}
+  .size-row .counter2{flex:1;margin-top:0}
+  .c2-total{font-size:12px;color:var(--ink-soft);margin-bottom:6px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+  .c2-total b{font-size:17px;color:var(--ink)}
+  .c2-total b.counted{color:var(--pitch)}
+  .c2-total .breakdown{font-size:11px;color:var(--slate)}
+  .c2-stage{display:flex;align-items:center;gap:7px}
+  .stg{width:42px;height:42px;flex:0 0 auto;border-radius:11px;border:1px solid var(--line);background:var(--card);
+    font-size:24px;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:center;line-height:1}
+  .stg.plus{background:var(--pitch);border-color:var(--pitch);color:#fff}
+  .stg.plus.tramite{background:var(--sky);border-color:var(--sky)}
+  .stg:active{transform:scale(.94)}
+  .c2-pend{min-width:46px;text-align:center;font-weight:800;font-size:20px;color:var(--slate)}
+  .c2-pend.pos{color:var(--pitch)}
+  .c2-pend.neg{color:var(--amber)}
+  .c2-apply{flex:1;min-height:42px;border:1px solid var(--line);border-radius:11px;background:var(--card);
+    color:var(--slate);font-weight:800;font-size:13px;padding:0 8px}
+  .c2-apply.ready{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .c2-apply:disabled{opacity:.6}
 
   /* ---------- Footer action bar ---------- */
   .fab{position:fixed;left:0;right:0;bottom:0;z-index:45;background:rgba(246,248,247,.92);
@@ -289,6 +324,9 @@
     <div class="summary" id="cmpSummary"></div>
   </div>
   <div class="cmp-filters">
+    <input id="cmpSearch" class="search" type="text" inputmode="search" placeholder="Buscar por equipo…" autocomplete="off">
+    <div id="cmpActiveBar" class="active-bar hidden"></div>
+    <div class="chips" id="cmpTallaChips"></div>
     <div class="chips" id="cmpChips"></div>
   </div>
   <div class="cmp-body" id="cmpBody"></div>
@@ -308,12 +346,12 @@ import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11
    Podés cambiar "11.0.2" arriba por la versión que usan tus otras tools.
    ============================================================ */
 const firebaseConfig = {
-  apiKey: "PEGÁ_AQUÍ",
+  apiKey: "AIzaSyCi_LuHHxYZWEju23ejbm4rb5NAp_qUjbM",
   authDomain: "variedades-jared.firebaseapp.com",
   projectId: "variedades-jared",
-  storageBucket: "variedades-jared.appspot.com",
-  messagingSenderId: "PEGÁ_AQUÍ",
-  appId: "PEGÁ_AQUÍ"
+  storageBucket: "variedades-jared.firebasestorage.app",
+  messagingSenderId: "132528195391",
+  appId: "1:132528195391:web:71a35c2ba22799333f758a"
 };
 const COLECCION = "jared";
 const DOCUMENTO = "datos";
@@ -323,8 +361,10 @@ const LS_KEY = "conteo_fisico_jared_v1";
 
 let db;
 let productos = [];                 // inventario cargado al abrir (para mostrar tarjetas)
-let estado = { fisico:{}, tramite:{}, startedAt:null, updatedAt:null };
-let ui = { search:"", talla:"__all__", mode:"fisico", soloSinContar:false, filters:{}, panelAbierto:false };
+let estado = { fisico:{}, tramite:{}, pend:{}, startedAt:null, updatedAt:null };
+let ui = { search:"", talla:"__all__", mode:"fisico", soloSinContar:false,
+           filters:{}, exclusions:[], excPick:{key:null,val:"__none__"}, panelAbierto:false };
+const EMPTY = "__empty__";  // sentinela para "(Sin valor)"
 
 const $ = s => document.querySelector(s);
 const el = (id) => document.getElementById(id);
@@ -337,6 +377,7 @@ function cargarEstado(){
   }catch(e){ console.warn("No se pudo leer el conteo guardado", e); }
   if(!estado.fisico) estado.fisico={};
   if(!estado.tramite) estado.tramite={};
+  if(!estado.pend) estado.pend={};
 }
 function guardarEstado(){
   estado.updatedAt = Date.now();
@@ -396,6 +437,7 @@ function tallasUnicas(){
 function filterDefs(){
   const defs = [
     {key:"eq",  label:"Equipo"},
+    {key:"dor", label:"Dorsal"},
     {key:"ver", label:"Versión"},
     {key:"año", label:"Año"},
     {key:"col", label:"Color"},
@@ -405,6 +447,7 @@ function filterDefs(){
   [...exKeys].sort((a,b)=>a.localeCompare(b)).forEach(k => defs.push({key:"ex:"+k, label:k}));
   return defs;
 }
+function labelDe(key){ const d = filterDefs().find(x=>x.key===key); return d?d.label:key; }
 function valorCampo(p, key){
   if(key.startsWith("ex:")){
     const k = key.slice(3);
@@ -413,71 +456,135 @@ function valorCampo(p, key){
   const v = p[key];
   return v==null ? "" : String(v).trim();
 }
+function campoTieneVacios(key){ return productos.some(p => valorCampo(p,key)===""); }
+function etiquetaVacio(key){ return "(Sin "+labelDe(key).toLowerCase()+")"; }
+function etiquetaValor(key,val){ return val===EMPTY ? etiquetaVacio(key) : val; }
 function opcionesCampo(key){
   const set = new Set();
   productos.forEach(p => { const v = valorCampo(p,key); if(v) set.add(v); });
   const arr = [...set];
   if(key==="año") arr.sort((a,b)=> (parseFloat(b)||0)-(parseFloat(a)||0) || a.localeCompare(b));
   else arr.sort((a,b)=> a.localeCompare(b, "es", {numeric:true}));
+  if(campoTieneVacios(key)) arr.unshift(EMPTY);   // opción "(Sin ...)"
   return arr;
 }
 function filtrosActivos(){
   return Object.entries(ui.filters).filter(([,v]) => v && v!=="__all__");
 }
+/* ¿el producto coincide con un valor de filtro (real o EMPTY)? */
+function coincideValor(p, key, val){
+  const pv = valorCampo(p,key);
+  return val===EMPTY ? pv==="" : pv===val;
+}
+/* Filtros base compartidos por conteo y comparativo (talla, búsqueda, incluir, excluir) */
+function pasaFiltrosBase(p){
+  const q = ui.search.trim().toLowerCase();
+  if(ui.talla !== "__all__" && ((p.tal||"—").toString().trim() || "—") !== ui.talla) return false;
+  if(q && !(p.eq||"").toLowerCase().includes(q)) return false;
+  for(const [key,val] of filtrosActivos()){ if(!coincideValor(p,key,val)) return false; }
+  for(const ex of ui.exclusions){ if(coincideValor(p,ex.key,ex.val)) return false; }
+  return true;
+}
 function renderFilterPanel(){
   const panel = el("filterPanel");
   const defs = filterDefs();
-  let html = `<div class="filter-grid">`;
+
+  // --- Incluir (dropdowns) ---
+  let html = `<div class="filter-sec-t">Mostrar solo</div><div class="filter-grid">`;
   for(const d of defs){
     const val = ui.filters[d.key] || "__all__";
     const activo = val!=="__all__";
     const opts = opcionesCampo(d.key)
-      .map(o => `<option value="${escapeAttr(o)}" ${val===o?"selected":""}>${escapeHtml(o)}</option>`).join("");
+      .map(o => `<option value="${escapeAttr(o)}" ${val===o?"selected":""}>${escapeHtml(etiquetaValor(d.key,o))}</option>`).join("");
     html += `<div class="fld">
       <label>${escapeHtml(d.label)}</label>
-      <select data-key="${escapeAttr(d.key)}" class="${activo?"active":""}">
+      <select data-inc="${escapeAttr(d.key)}" class="${activo?"active":""}">
         <option value="__all__">Todos</option>${opts}
       </select></div>`;
   }
-  html += `</div><button class="clear" id="btnLimpiar">Limpiar filtros</button>`;
+  html += `</div>`;
+
+  // --- Excluir ---
+  const pk = ui.excPick.key || defs[0].key;
+  const valOpts = opcionesCampo(pk)
+    .map(o => `<option value="${escapeAttr(o)}" ${ui.excPick.val===o?"selected":""}>${escapeHtml(etiquetaValor(pk,o))}</option>`).join("");
+  html += `<div class="filter-sec-t excl">Excluir (ocultar)</div>
+    <div class="excl-row">
+      <select id="excKey">${defs.map(d=>`<option value="${escapeAttr(d.key)}" ${pk===d.key?"selected":""}>${escapeHtml(d.label)}</option>`).join("")}</select>
+      <select id="excVal"><option value="__none__">Elegí valor…</option>${valOpts}</select>
+      <button id="excAdd" class="excl-add">Excluir</button>
+    </div>`;
+  if(ui.exclusions.length){
+    html += `<div class="excl-chips">` + ui.exclusions.map((e,i)=>
+      `<button class="excl-chip" data-i="${i}">${escapeHtml(labelDe(e.key))}: ${escapeHtml(etiquetaValor(e.key,e.val))} <span class="x">×</span></button>`).join("") + `</div>`;
+  }
+
+  html += `<button class="clear" id="btnLimpiar">Limpiar todos los filtros</button>`;
   panel.innerHTML = html;
-  panel.querySelectorAll("select").forEach(s => s.onchange = () => {
-    ui.filters[s.dataset.key] = s.value;
-    actualizarBadge(); renderFilterPanel(); renderLista();
+
+  // Incluir
+  panel.querySelectorAll("select[data-inc]").forEach(s => s.onchange = () => {
+    ui.filters[s.dataset.inc] = s.value; afterFilterChange();
   });
-  el("btnLimpiar").onclick = () => { ui.filters={}; actualizarBadge(); renderFilterPanel(); renderLista(); };
+  // Excluir: cambiar campo repuebla valores
+  el("excKey").onchange = () => { ui.excPick = {key:el("excKey").value, val:"__none__"}; renderFilterPanel(); };
+  el("excVal").onchange = () => { ui.excPick.val = el("excVal").value; };
+  el("excAdd").onclick = () => {
+    const key = el("excKey").value, val = el("excVal").value;
+    if(val==="__none__") return;
+    if(!ui.exclusions.some(e=>e.key===key && e.val===val)) ui.exclusions.push({key,val});
+    ui.excPick = {key, val:"__none__"};
+    afterFilterChange();
+  };
+  panel.querySelectorAll(".excl-chip").forEach(b => b.onclick = () => {
+    ui.exclusions.splice(+b.dataset.i,1); afterFilterChange();
+  });
+  el("btnLimpiar").onclick = () => { ui.filters={}; ui.exclusions=[]; afterFilterChange(); };
 }
+function nFiltros(){ return filtrosActivos().length + ui.exclusions.length; }
 function actualizarBadge(){
-  const n = filtrosActivos().length;
+  const n = nFiltros();
   const b = el("fBadge");
   b.textContent = n; b.classList.toggle("hidden", n===0);
   el("btnFilters").classList.toggle("on", n>0);
 }
 
 /* Barra pequeña y fija: solo muestra los filtros aplicados, con ✕ para quitarlos */
-function renderActiveBar(){
+function chipsActivos(){
   const chips = [];
   if(ui.talla !== "__all__")
-    chips.push({txt:`Talla: ${ui.talla}`, clear:()=>{ ui.talla="__all__"; renderTallaChips(); }});
+    chips.push({txt:`Talla: ${ui.talla}`, cls:"", clear:()=>{ ui.talla="__all__"; renderTallaChips(); syncCmpControls(); }});
   if(ui.search.trim())
-    chips.push({txt:`Equipo: ${ui.search.trim()}`, clear:()=>{ ui.search=""; el("search").value=""; }});
+    chips.push({txt:`Equipo: ${ui.search.trim()}`, cls:"", clear:()=>{ ui.search=""; if(el("search"))el("search").value=""; syncCmpControls(); }});
   if(ui.soloSinContar)
-    chips.push({txt:`Sin contar`, clear:()=>{ ui.soloSinContar=false; el("soloSinContar").classList.remove("on"); }});
-  const defs = filterDefs();
-  for(const [key,val] of filtrosActivos()){
-    const d = defs.find(x=>x.key===key);
-    chips.push({txt:`${d?d.label:key}: ${val}`, clear:()=>{ ui.filters[key]="__all__"; }});
-  }
-
-  const bar = el("activeBar");
+    chips.push({txt:`Sin contar`, cls:"", clear:()=>{ ui.soloSinContar=false; el("soloSinContar").classList.remove("on"); }});
+  for(const [key,val] of filtrosActivos())
+    chips.push({txt:`${labelDe(key)}: ${etiquetaValor(key,val)}`, cls:"", clear:()=>{ ui.filters[key]="__all__"; }});
+  ui.exclusions.forEach((e,i)=>
+    chips.push({txt:`Excluye ${labelDe(e.key)}: ${etiquetaValor(e.key,e.val)}`, cls:"exc", clear:()=>{ ui.exclusions = ui.exclusions.filter(x=>!(x.key===e.key&&x.val===e.val)); }}));
+  return chips;
+}
+function pintarBarra(bar, chips){
+  if(!bar) return;
   if(chips.length===0){ bar.classList.add("hidden"); bar.innerHTML=""; return; }
   bar.classList.remove("hidden");
   bar.innerHTML = `<span class="ab-label">Filtros:</span>` +
-    chips.map((c,i)=>`<button class="ab-chip" data-i="${i}">${escapeHtml(c.txt)} <span class="x">×</span></button>`).join("");
+    chips.map((c,i)=>`<button class="ab-chip ${c.cls}" data-i="${i}">${escapeHtml(c.txt)} <span class="x">×</span></button>`).join("");
   bar.querySelectorAll(".ab-chip").forEach(b => b.onclick = () => { chips[+b.dataset.i].clear(); afterFilterChange(); });
 }
+function renderActiveBar(){
+  const chips = chipsActivos();
+  pintarBarra(el("activeBar"), chips);
+  pintarBarra(el("cmpActiveBar"), chipsActivos()); // arreglo nuevo por si el otro se consumió
+}
 
-function afterFilterChange(){ actualizarBadge(); renderFilterPanel(); renderActiveBar(); renderLista(); }
+function afterFilterChange(){
+  actualizarBadge();
+  if(ui.panelAbierto || el("filterPanel").innerHTML) renderFilterPanel();
+  renderActiveBar();
+  renderLista();
+  if(!el("cmpView").classList.contains("hidden")) renderComparativo();
+}
 
 function renderTallaChips(){
   const cont = el("tallaChips");
@@ -492,12 +599,9 @@ function renderTallaChips(){
 }
 
 function productosFiltrados(){
-  const q = ui.search.trim().toLowerCase();
   return productos.filter(p => {
-    if(ui.talla !== "__all__" && ((p.tal||"—").toString().trim() || "—") !== ui.talla) return false;
-    if(q && !(p.eq||"").toLowerCase().includes(q)) return false;
+    if(!pasaFiltrosBase(p)) return false;
     if(ui.soloSinContar && contadoTotal(p.id) > 0) return false;
-    for(const [key,val] of filtrosActivos()){ if(valorCampo(p,key) !== val) return false; }
     return true;
   });
 }
@@ -525,8 +629,9 @@ function renderLista(){
   else renderPlano(items);
 
   // Conectar botones (sirve para ambos layouts)
-  list.querySelectorAll(".cbtn.plus").forEach(b => { b.onclick = () => cambiar(b.dataset.id, +1); b.classList.toggle("tramite", ui.mode==="tramite"); });
-  list.querySelectorAll(".cbtn.minus").forEach(b => b.onclick = () => cambiar(b.dataset.id, -1));
+  list.querySelectorAll(".stg.plus").forEach(b => { b.onclick = () => stage(b.dataset.id, +1); b.classList.toggle("tramite", ui.mode==="tramite"); });
+  list.querySelectorAll(".stg.minus").forEach(b => b.onclick = () => stage(b.dataset.id, -1));
+  list.querySelectorAll(".c2-apply").forEach(b => b.onclick = () => aplicar(b.dataset.id));
 }
 
 /* Vista PLANA: una tarjeta por producto (cuando se ve una sola talla) */
@@ -560,20 +665,11 @@ function modelCardHtml(grupo){
   const ex = extrasStr(rep);
   const totalModelo = grupo.reduce((s,p)=>s+contadoTotal(p.id),0);
 
-  const filas = grupo.map(p => {
-    const f = estado.fisico[p.id]||0, t = estado.tramite[p.id]||0, total = f+t;
-    const plusT = ui.mode==="tramite" ? "tramite" : "";
-    return `
-    <div class="size-row" data-id="${escapeAttr(p.id)}">
+  const filas = grupo.map(p => `
+    <div class="size-row">
       <span class="tal">${escapeHtml((p.tal||"—").toString())}</span>
-      <div class="sr-mid"><span class="breakdown"><span class="f">Físico: ${f}</span>${t?` · <span class="t">Trámite: ${t}</span>`:""}</span></div>
-      <div class="cbtns">
-        <button class="cbtn minus" data-id="${escapeAttr(p.id)}">−</button>
-        <span class="cnum ${total>0?"counted":""}">${total}</span>
-        <button class="cbtn plus ${plusT}" data-id="${escapeAttr(p.id)}">+</button>
-      </div>
-    </div>`;
-  }).join("");
+      ${counterHtml(p.id)}
+    </div>`).join("");
 
   return `
   <div class="model-card" data-model="1">
@@ -590,16 +686,31 @@ function modelCardHtml(grupo){
   </div>`;
 }
 
+function counterHtml(id){
+  const f = estado.fisico[id]||0, t = estado.tramite[id]||0, total=f+t;
+  const d = estado.pend[id]||0;
+  const plusT = ui.mode==="tramite" ? "tramite" : "";
+  return `
+  <div class="counter2" data-id="${escapeAttr(id)}">
+    <div class="c2-total">Total <b class="c2-num ${total>0?"counted":""}">${total}</b>
+      <span class="breakdown">F ${f}${t?` · T ${t}`:""}</span></div>
+    <div class="c2-stage">
+      <button class="stg minus" data-id="${escapeAttr(id)}">−</button>
+      <span class="c2-pend ${d>0?"pos":d<0?"neg":""}">${d>0?"+"+d:d}</span>
+      <button class="stg plus ${plusT}" data-id="${escapeAttr(id)}">+</button>
+      <button class="c2-apply ${d!==0?"ready":""}" data-id="${escapeAttr(id)}" ${d===0?"disabled":""}>${d===0?"Aplicar":(d>0?"Aplicar +"+d:"Aplicar "+d)}</button>
+    </div>
+  </div>`;
+}
+
 function cardHtml(p){
   const foto = fotoPrincipal(p);
   const thumb = foto
     ? `<img loading="lazy" decoding="async" src="${escapeAttr(foto)}" alt="">`
     : `👕`;
   const ex = extrasStr(p);
-  const f = estado.fisico[p.id]||0, t = estado.tramite[p.id]||0, total = f+t;
-  const plusTramite = ui.mode==="tramite" ? "tramite" : "";
   return `
-  <div class="card" data-id="${escapeAttr(p.id)}">
+  <div class="card">
     <div class="thumb">${thumb}</div>
     <div class="info">
       <div class="team">${escapeHtml(p.eq||"—")}
@@ -608,40 +719,49 @@ function cardHtml(p){
       </div>
       <div class="meta">${[p.ver,p.col,p.año].filter(Boolean).map(escapeHtml).join(' <span class="sep">·</span> ')||"—"}</div>
       ${ex?`<div class="extras">${escapeHtml(ex)}</div>`:""}
-      <div class="breakdown"><span class="f">Físico: ${f}</span>${t?` · <span class="t">Trámite: ${t}</span>`:""}</div>
-    </div>
-    <div class="counter">
-      <div class="cnum ${total>0?"counted":""}" data-num="${escapeAttr(p.id)}">${total}</div>
-      <div class="cbtns">
-        <button class="cbtn minus" data-id="${escapeAttr(p.id)}">−</button>
-        <button class="cbtn plus ${plusTramite}" data-id="${escapeAttr(p.id)}">+</button>
-      </div>
+      ${counterHtml(p.id)}
     </div>
   </div>`;
 }
 
-/* -------- Contar -------- */
-function cambiar(id, delta){
+/* -------- Contar (por lotes) -------- */
+function stage(id, delta){
+  estado.pend[id] = (estado.pend[id]||0) + delta;
+  guardarEstado();
+  actualizarPend(id);
+}
+function aplicar(id){
+  const d = estado.pend[id]||0;
+  if(!d) return;
   const bucket = ui.mode === "tramite" ? estado.tramite : estado.fisico;
-  const nuevo = Math.max(0, (bucket[id]||0) + delta);
-  bucket[id] = nuevo;
+  bucket[id] = Math.max(0, (bucket[id]||0) + d);
+  estado.pend[id] = 0;
   guardarEstado();
   actualizarTarjeta(id);
+  actualizarPend(id);
   actualizarTotales();
+}
+function actualizarPend(id){
+  const d = estado.pend[id]||0;
+  document.querySelectorAll(`.counter2[data-id="${cssEsc(id)}"]`).forEach(node => {
+    const pe = node.querySelector(".c2-pend");
+    if(pe){ pe.textContent = d>0?"+"+d:d; pe.classList.toggle("pos",d>0); pe.classList.toggle("neg",d<0); }
+    const ap = node.querySelector(".c2-apply");
+    if(ap){ ap.disabled = d===0; ap.classList.toggle("ready", d!==0);
+      ap.textContent = d===0?"Aplicar":(d>0?"Aplicar +"+d:"Aplicar "+d); }
+  });
 }
 function actualizarTarjeta(id){
   const f = estado.fisico[id]||0, t = estado.tramite[id]||0, total = f+t;
-  const nodes = el("list").querySelectorAll(`[data-id="${cssEsc(id)}"]`);
-  nodes.forEach(node => {
-    const num = node.querySelector(".cnum");
+  document.querySelectorAll(`.counter2[data-id="${cssEsc(id)}"]`).forEach(node => {
+    const num = node.querySelector(".c2-num");
     if(num){ num.textContent = total; num.classList.toggle("counted", total>0); }
     const bd = node.querySelector(".breakdown");
-    if(bd){ bd.innerHTML = `<span class="f">Físico: ${f}</span>${t?` · <span class="t">Trámite: ${t}</span>`:""}`; }
-    // total del modelo (si está dentro de una tarjeta agrupada)
+    if(bd){ bd.textContent = `F ${f}${t?` · T ${t}`:""}`; }
     const mc = node.closest(".model-card");
     if(mc){
       let tot = 0;
-      mc.querySelectorAll(".size-row[data-id]").forEach(r => tot += contadoTotal(r.dataset.id));
+      mc.querySelectorAll(".counter2[data-id]").forEach(r => tot += contadoTotal(r.dataset.id));
       const mt = mc.querySelector(".mc-total-num");
       if(mt){ mt.textContent = tot; mt.classList.toggle("counted", tot>0); }
     }
@@ -661,7 +781,7 @@ function setMode(m){
   seg.classList.toggle("tramite", m==="tramite");
   seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.mode===m));
   // solo actualizar color del botón + sin re-renderizar todo
-  el("list").querySelectorAll(".cbtn.plus").forEach(b => b.classList.toggle("tramite", m==="tramite"));
+  el("list").querySelectorAll(".stg.plus").forEach(b => b.classList.toggle("tramite", m==="tramite"));
 }
 
 /* ============================================================
@@ -730,21 +850,56 @@ async function cerrarYComparar(){
   window.scrollTo(0,0);
 }
 
+let cmpVisibles = [];
+function renderCmpTallaChips(){
+  const cont = el("cmpTallaChips"); if(!cont) return;
+  const tallas = tallasUnicas();
+  let html = `<span class="chip-label">Talla</span>`;
+  html += `<button class="chip ${ui.talla==="__all__"?"on":""}" data-talla="__all__">Todas</button>`;
+  html += tallas.map(t => `<button class="chip ${ui.talla===t?"on":""}" data-talla="${escapeAttr(t)}">${escapeHtml(t)}</button>`).join("");
+  cont.innerHTML = html;
+  cont.querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    ui.talla = c.dataset.talla; renderTallaChips(); afterFilterChange();
+  });
+}
+function syncCmpControls(){
+  if(el("cmpSearch")) el("cmpSearch").value = ui.search;
+  renderCmpTallaChips();
+}
+function focusModel(p){
+  ui.search=""; if(el("search")) el("search").value="";
+  if(el("cmpSearch")) el("cmpSearch").value="";
+  const setInc = (k) => { const v = valorCampo(p,k); ui.filters[k] = (v===""?EMPTY:v); };
+  ["eq","dor","ver","año","col"].forEach(setInc);
+  filterDefs().filter(d=>d.key.startsWith("ex:")).forEach(d=>setInc(d.key));
+  ui.exclusions = [];
+  ui.talla = "__all__";
+  renderTallaChips();
+  afterFilterChange();
+}
+
 function renderComparativo(){
-  const {filas, totalContado, totalSistema, conDif} = cmpData;
+  const base = cmpData.filas.filter(f => pasaFiltrosBase(f.prod));
+  let totalContado=0, totalSistema=0;
+  base.forEach(f => { totalContado += f.contado; totalSistema += f.sistema; });
+  const conDif = base.filter(f=>f.cat!=="ok").length;
   const diffNeta = totalContado - totalSistema;
+
   el("cmpSummary").innerHTML = `
     <div class="sm"><b>${totalContado}</b><span>Contado</span></div>
     <div class="sm"><b>${totalSistema}</b><span>En sistema</span></div>
     <div class="sm diff"><b>${diffNeta>0?"+":""}${diffNeta}</b><span>${conDif} c/diferencia</span></div>`;
 
+  syncCmpControls();
+  renderActiveBar();
+
   const counts = {
-    all: filas.length,
-    dif: filas.filter(f=>f.cat!=="ok").length,
-    faltan: filas.filter(f=>f.cat==="faltan").length,
-    sobran: filas.filter(f=>f.cat==="sobran").length,
-    nocont: filas.filter(f=>f.cat==="nocont").length,
-    ok: filas.filter(f=>f.cat==="ok").length,
+    all: base.length,
+    dif: base.filter(f=>f.cat!=="ok").length,
+    faltan: base.filter(f=>f.cat==="faltan").length,
+    sobran: base.filter(f=>f.cat==="sobran").length,
+    nocont: base.filter(f=>f.cat==="nocont").length,
+    ok: base.filter(f=>f.cat==="ok").length,
   };
   const chips = [
     ["dif","Solo diferencias"],["all","Todas"],["faltan","Faltan"],
@@ -756,15 +911,16 @@ function renderComparativo(){
     cmpFiltro = c.dataset.f; renderComparativo();
   });
 
-  let visibles = filas;
-  if(cmpFiltro==="dif") visibles = filas.filter(f=>f.cat!=="ok");
-  else if(cmpFiltro!=="all") visibles = filas.filter(f=>f.cat===cmpFiltro);
+  let visibles = base;
+  if(cmpFiltro==="dif") visibles = base.filter(f=>f.cat!=="ok");
+  else if(cmpFiltro!=="all") visibles = base.filter(f=>f.cat===cmpFiltro);
+  cmpVisibles = visibles;
 
   const body = el("cmpBody");
-  if(visibles.length===0){ body.innerHTML = `<div class="empty">No hay productos en esta categoría.</div>`; return; }
+  if(visibles.length===0){ body.innerHTML = `<div class="empty">No hay productos en esta categoría con los filtros actuales.</div>`; return; }
 
   const tagText = {ok:"Coincide",faltan:"Faltan",sobran:"Sobran",nocont:"No contada"};
-  body.innerHTML = visibles.map(f => {
+  body.innerHTML = visibles.map((f,idx) => {
     const p = f.prod, foto = fotoPrincipal(p);
     const thumb = foto ? `<img loading="lazy" decoding="async" src="${escapeAttr(foto)}" alt="">` : `👕`;
     const ex = extrasStr(p);
@@ -782,6 +938,7 @@ function renderComparativo(){
         ${ex?`<div class="extras">${escapeHtml(ex)}</div>`:""}
         <span class="tag ${f.cat}">${tagText[f.cat]}</span>
         ${f.tramite?`<span class="extras"> · incluye ${f.tramite} en trámite</span>`:""}
+        <button class="crow-focus" data-i="${idx}">🎯 solo este modelo</button>
       </div>
       <div class="nums">
         <div class="big">${f.contado} <span style="font-weight:600;color:var(--slate)">vs ${f.sistema}</span></div>
@@ -790,11 +947,12 @@ function renderComparativo(){
       </div>
     </div>`;
   }).join("");
+  body.querySelectorAll(".crow-focus").forEach(b => b.onclick = () => focusModel(visibles[+b.dataset.i].prod));
 }
 
 /* -------- Export CSV -------- */
 function exportarCSV(){
-  const {filas} = cmpData;
+  const filas = (cmpVisibles && cmpVisibles.length) ? cmpVisibles : cmpData.filas;
   const head = ["estado","id","equipo","dorsal","talla","version","color","año","extras","contado_fisico","contado_tramite","contado_total","sistema","diferencia"];
   const esc = v => `"${(v==null?"":String(v)).replace(/"/g,'""')}"`;
   const cat = {ok:"COINCIDE",faltan:"FALTAN",sobran:"SOBRAN",nocont:"NO_CONTADA"};
@@ -824,10 +982,10 @@ function reiniciar(){
   const uds = productos.reduce((s,p)=>s+contadoTotal(p.id),0);
   if(!confirm(`¿Borrar el conteo actual? Se perderán ${uds} unidades contadas en este dispositivo. Firebase NO se toca.`)) return;
   if(!confirm(`Confirmá una vez más: esto NO se puede deshacer. ¿Borrar el conteo de ${uds} unidades?`)) return;
-  estado = { fisico:{}, tramite:{}, startedAt:Date.now(), updatedAt:Date.now() };
+  estado = { fisico:{}, tramite:{}, pend:{}, startedAt:Date.now(), updatedAt:Date.now() };
   guardarEstado();
   el("cmpView").classList.add("hidden");
-  renderTallaChips(); renderLista(); actualizarTotales();
+  renderTallaChips(); renderActiveBar(); renderLista(); actualizarTotales();
 }
 
 /* -------- Pantalla genérica -------- */
@@ -865,11 +1023,13 @@ async function init(){
   renderTallaChips();
   renderFilterPanel();
   actualizarBadge();
+  renderActiveBar();
   renderLista();
   actualizarTotales();
 
   // listeners
-  el("search").addEventListener("input", e => { ui.search = e.target.value; renderLista(); });
+  el("search").addEventListener("input", e => { ui.search = e.target.value; renderActiveBar(); syncCmpControls(); renderLista(); });
+  el("cmpSearch").addEventListener("input", e => { ui.search = e.target.value; if(el("search"))el("search").value=e.target.value; afterFilterChange(); });
   el("modeSeg").querySelectorAll("button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
   el("btnFilters").onclick = () => {
     ui.panelAbierto = !ui.panelAbierto;
@@ -878,7 +1038,7 @@ async function init(){
   el("soloSinContar").onclick = () => {
     ui.soloSinContar = !ui.soloSinContar;
     el("soloSinContar").classList.toggle("on", ui.soloSinContar);
-    renderLista();
+    renderActiveBar(); renderLista();
   };
   el("btnPause").onclick = pausar;
   el("btnResume").onclick = reanudar;
