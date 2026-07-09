@@ -110,6 +110,22 @@
   .crow-focus{display:inline-block;margin-top:5px;background:transparent;border:1px solid var(--line);
     border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;color:var(--ink-soft)}
 
+  /* ---------- Comparativo agrupado por tarjeta ---------- */
+  .ccard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .csizes{margin-top:9px;border-top:1px dashed var(--line);padding-top:4px}
+  .csize-row{display:flex;align-items:center;gap:9px;padding:7px 2px 7px 9px;border-left:3px solid transparent}
+  .csize-row+.csize-row{border-top:1px solid var(--bg)}
+  .csize-row.ok{border-left-color:var(--ok)}
+  .csize-row.faltan{border-left-color:var(--amber)}
+  .csize-row.sobran{border-left-color:var(--sky)}
+  .csize-row.nocont{border-left-color:var(--slate)}
+  .csize-row .tal{flex:0 0 auto;min-width:40px;text-align:center}
+  .csize-row .cs-tag{flex:0 0 auto}
+  .csize-row .cs-nums{flex:1;text-align:right;font-size:12px;color:var(--slate);white-space:nowrap}
+  .csize-row .cs-nums .cs-big{font-size:15px;font-weight:800;color:var(--ink)}
+  .cc-sum{margin-top:7px;text-align:right;font-size:11px;color:var(--slate)}
+  .cc-sum b{color:var(--ink);font-size:13px}
+
   /* ---------- List ---------- */
   main{padding:6px 12px}
   .group-head{position:sticky;top:172px;z-index:20;background:var(--bg);
@@ -285,12 +301,6 @@
     <input id="search" class="search" type="text" inputmode="search" placeholder="Buscar por equipo…" autocomplete="off">
     <div class="chips" id="tallaChips"></div>
     <div class="toolbar">
-      <div class="seg" id="modeSeg">
-        <button data-mode="fisico" class="on">Conteo físico</button>
-        <button data-mode="tramite">En trámite</button>
-      </div>
-    </div>
-    <div class="toolbar">
       <button class="mini-toggle" id="btnFilters">Filtros<span class="fbadge hidden" id="fBadge">0</span></button>
       <button class="mini-toggle" id="soloSinContar">Sin contar</button>
     </div>
@@ -324,7 +334,7 @@
     <div class="summary" id="cmpSummary"></div>
   </div>
   <div class="cmp-filters">
-    <input id="cmpSearch" class="search" type="text" inputmode="search" placeholder="Buscar por equipo…" autocomplete="off">
+    <select id="cmpEquipo" class="search"></select>
     <div id="cmpActiveBar" class="active-bar hidden"></div>
     <div class="chips" id="cmpTallaChips"></div>
     <div class="chips" id="cmpChips"></div>
@@ -606,13 +616,16 @@ function productosFiltrados(){
   });
 }
 
-/* clave de modelo = todas las variables MENOS la talla (como agrupa la app principal) */
+/* clave de modelo = TODAS las variables MENOS la talla (id, stk y fotos no son variables) */
 function modelKey(p){
+  const skip = new Set(["id","tal","stk","fotos","extras"]);
+  const base = Object.keys(p).filter(k => !skip.has(k)).sort()
+    .map(k => k+"="+(p[k]==null?"":String(p[k]).trim())).join("|");
   let ex = "";
   if(p.extras && typeof p.extras==="object"){
-    ex = Object.keys(p.extras).sort().map(k => k+"="+p.extras[k]).join("|");
+    ex = Object.keys(p.extras).sort().map(k => "x:"+k+"="+String(p.extras[k]).trim()).join("|");
   }
-  return JSON.stringify([p.eq||"", p.dor||"", p.ver||"", p.col||"", p.año||"", ex]);
+  return base + "||" + ex;
 }
 
 function renderLista(){
@@ -629,7 +642,7 @@ function renderLista(){
   else renderPlano(items);
 
   // Conectar botones (sirve para ambos layouts)
-  list.querySelectorAll(".stg.plus").forEach(b => { b.onclick = () => stage(b.dataset.id, +1); b.classList.toggle("tramite", ui.mode==="tramite"); });
+  list.querySelectorAll(".stg.plus").forEach(b => b.onclick = () => stage(b.dataset.id, +1));
   list.querySelectorAll(".stg.minus").forEach(b => b.onclick = () => stage(b.dataset.id, -1));
   list.querySelectorAll(".c2-apply").forEach(b => b.onclick = () => aplicar(b.dataset.id));
 }
@@ -687,17 +700,15 @@ function modelCardHtml(grupo){
 }
 
 function counterHtml(id){
-  const f = estado.fisico[id]||0, t = estado.tramite[id]||0, total=f+t;
+  const total = contadoTotal(id);
   const d = estado.pend[id]||0;
-  const plusT = ui.mode==="tramite" ? "tramite" : "";
   return `
   <div class="counter2" data-id="${escapeAttr(id)}">
-    <div class="c2-total">Total <b class="c2-num ${total>0?"counted":""}">${total}</b>
-      <span class="breakdown">F ${f}${t?` · T ${t}`:""}</span></div>
+    <div class="c2-total">Total <b class="c2-num ${total>0?"counted":""}">${total}</b></div>
     <div class="c2-stage">
       <button class="stg minus" data-id="${escapeAttr(id)}">−</button>
       <span class="c2-pend ${d>0?"pos":d<0?"neg":""}">${d>0?"+"+d:d}</span>
-      <button class="stg plus ${plusT}" data-id="${escapeAttr(id)}">+</button>
+      <button class="stg plus" data-id="${escapeAttr(id)}">+</button>
       <button class="c2-apply ${d!==0?"ready":""}" data-id="${escapeAttr(id)}" ${d===0?"disabled":""}>${d===0?"Aplicar":(d>0?"Aplicar +"+d:"Aplicar "+d)}</button>
     </div>
   </div>`;
@@ -733,8 +744,7 @@ function stage(id, delta){
 function aplicar(id){
   const d = estado.pend[id]||0;
   if(!d) return;
-  const bucket = ui.mode === "tramite" ? estado.tramite : estado.fisico;
-  bucket[id] = Math.max(0, (bucket[id]||0) + d);
+  estado.fisico[id] = Math.max(0, (estado.fisico[id]||0) + d);
   estado.pend[id] = 0;
   guardarEstado();
   actualizarTarjeta(id);
@@ -752,12 +762,10 @@ function actualizarPend(id){
   });
 }
 function actualizarTarjeta(id){
-  const f = estado.fisico[id]||0, t = estado.tramite[id]||0, total = f+t;
+  const total = contadoTotal(id);
   document.querySelectorAll(`.counter2[data-id="${cssEsc(id)}"]`).forEach(node => {
     const num = node.querySelector(".c2-num");
     if(num){ num.textContent = total; num.classList.toggle("counted", total>0); }
-    const bd = node.querySelector(".breakdown");
-    if(bd){ bd.textContent = `F ${f}${t?` · T ${t}`:""}`; }
     const mc = node.closest(".model-card");
     if(mc){
       let tot = 0;
@@ -774,15 +782,7 @@ function actualizarTotales(){
   el("status").textContent = `${productos.length} variantes en sistema · ${variantes} contadas`;
 }
 
-/* -------- Modo / filtros UI -------- */
-function setMode(m){
-  ui.mode = m;
-  const seg = el("modeSeg");
-  seg.classList.toggle("tramite", m==="tramite");
-  seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.mode===m));
-  // solo actualizar color del botón + sin re-renderizar todo
-  el("list").querySelectorAll(".stg.plus").forEach(b => b.classList.toggle("tramite", m==="tramite"));
-}
+/* -------- Totales -------- */
 
 /* ============================================================
    COMPARATIVO  (re-lee Firebase para el stock más fresco)
@@ -843,6 +843,7 @@ async function cerrarYComparar(){
     return;
   }
   el("screen").classList.add("hidden");
+  el("app").classList.remove("hidden");
   cmpData = construirComparativo(invActual);
   cmpFiltro = "dif";
   renderComparativo();
@@ -862,13 +863,21 @@ function renderCmpTallaChips(){
     ui.talla = c.dataset.talla; renderTallaChips(); afterFilterChange();
   });
 }
+function renderCmpEquipo(){
+  const sel = el("cmpEquipo"); if(!sel) return;
+  const eqs = opcionesCampo("eq").filter(v=>v!==EMPTY);
+  const cur = ui.filters["eq"] || "__all__";
+  sel.innerHTML = `<option value="__all__">Todos los equipos</option>` +
+    (campoTieneVacios("eq")?`<option value="${EMPTY}" ${cur===EMPTY?"selected":""}>${escapeHtml(etiquetaVacio("eq"))}</option>`:"") +
+    eqs.map(e=>`<option value="${escapeAttr(e)}" ${cur===e?"selected":""}>${escapeHtml(e)}</option>`).join("");
+  sel.onchange = () => { ui.filters["eq"] = sel.value; afterFilterChange(); };
+}
 function syncCmpControls(){
-  if(el("cmpSearch")) el("cmpSearch").value = ui.search;
+  renderCmpEquipo();
   renderCmpTallaChips();
 }
 function focusModel(p){
   ui.search=""; if(el("search")) el("search").value="";
-  if(el("cmpSearch")) el("cmpSearch").value="";
   const setInc = (k) => { const v = valorCampo(p,k); ui.filters[k] = (v===""?EMPTY:v); };
   ["eq","dor","ver","año","col"].forEach(setInc);
   filterDefs().filter(d=>d.key.startsWith("ex:")).forEach(d=>setInc(d.key));
@@ -919,35 +928,56 @@ function renderComparativo(){
   const body = el("cmpBody");
   if(visibles.length===0){ body.innerHTML = `<div class="empty">No hay productos en esta categoría con los filtros actuales.</div>`; return; }
 
+  // Agrupar por modelo (tarjeta), igual que el conteo
   const tagText = {ok:"Coincide",faltan:"Faltan",sobran:"Sobran",nocont:"No contada"};
-  body.innerHTML = visibles.map((f,idx) => {
-    const p = f.prod, foto = fotoPrincipal(p);
+  const rank = {nocont:0, faltan:1, sobran:2, ok:3};
+  const grupos = new Map();
+  for(const f of visibles){
+    const k = modelKey(f.prod);
+    if(!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(f);
+  }
+  const cards = [...grupos.values()];
+  cards.forEach(g => g.sort((a,b)=>cmpTalla(a.prod.tal,b.prod.tal)));
+  cards.sort((ga,gb)=>{
+    const ra = Math.min(...ga.map(f=>rank[f.cat])), rb = Math.min(...gb.map(f=>rank[f.cat]));
+    return ra-rb || (ga[0].prod.eq||"").localeCompare(gb[0].prod.eq||"");
+  });
+
+  body.innerHTML = cards.map((g,idx) => {
+    const rep = g.find(f=>fotoPrincipal(f.prod))?.prod || g[0].prod;
+    const foto = fotoPrincipal(rep);
     const thumb = foto ? `<img loading="lazy" decoding="async" src="${escapeAttr(foto)}" alt="">` : `👕`;
-    const ex = extrasStr(p);
-    const diffCls = f.diff>0?"diff-pos":(f.diff<0?"diff-neg":"");
-    const diffTxt = f.diff>0?`+${f.diff}`:`${f.diff}`;
+    const ex = extrasStr(rep);
+    let sc=0, ss=0;
+    const filas = g.map(f => {
+      sc+=f.contado; ss+=f.sistema;
+      const diffCls = f.diff>0?"diff-pos":(f.diff<0?"diff-neg":"");
+      const diffTxt = f.diff>0?`+${f.diff}`:`${f.diff}`;
+      return `
+      <div class="csize-row ${f.cat}">
+        <span class="tal">${escapeHtml((f.prod.tal||"—").toString())}</span>
+        <span class="cs-tag"><span class="tag ${f.cat}">${tagText[f.cat]}</span></span>
+        <span class="cs-nums"><b class="cs-big">${f.contado}</b> vs ${f.sistema} · <span class="${diffCls}" style="font-weight:800">Dif ${diffTxt}</span></span>
+      </div>`;
+    }).join("");
+    const sd = sc-ss;
     return `
-    <div class="crow ${f.cat}">
-      <div class="thumb">${thumb}</div>
-      <div class="info">
-        <div class="team">${escapeHtml(p.eq||"—")}
-          ${p.dor?`<span class="dor">#${escapeHtml(p.dor)}</span>`:""}
-          ${p.tal?`<span class="tal">${escapeHtml(p.tal.toString())}</span>`:""}
+    <div class="ccard">
+      <div class="mc-head">
+        <div class="thumb">${thumb}</div>
+        <div class="mc-info">
+          <div class="team">${escapeHtml(rep.eq||"—")}${rep.dor?`<span class="dor">#${escapeHtml(rep.dor)}</span>`:""}</div>
+          <div class="meta">${[rep.ver,rep.col,rep.año].filter(Boolean).map(escapeHtml).join(' <span class="sep">·</span> ')||"—"}</div>
+          ${ex?`<div class="extras">${escapeHtml(ex)}</div>`:""}
+          <button class="crow-focus" data-i="${idx}">🎯 solo este modelo</button>
         </div>
-        <div class="meta">${[p.ver,p.col,p.año].filter(Boolean).map(escapeHtml).join(' · ')||""}</div>
-        ${ex?`<div class="extras">${escapeHtml(ex)}</div>`:""}
-        <span class="tag ${f.cat}">${tagText[f.cat]}</span>
-        ${f.tramite?`<span class="extras"> · incluye ${f.tramite} en trámite</span>`:""}
-        <button class="crow-focus" data-i="${idx}">🎯 solo este modelo</button>
       </div>
-      <div class="nums">
-        <div class="big">${f.contado} <span style="font-weight:600;color:var(--slate)">vs ${f.sistema}</span></div>
-        <div>Contado / Sistema</div>
-        <div style="font-weight:800;font-size:15px" class="${diffCls}">Dif: ${diffTxt}</div>
-      </div>
+      <div class="csizes">${filas}</div>
+      <div class="cc-sum">Modelo: contado <b>${sc}</b> · sistema <b>${ss}</b> · dif <b class="${sd>0?'diff-pos':sd<0?'diff-neg':''}">${sd>0?'+':''}${sd}</b></div>
     </div>`;
   }).join("");
-  body.querySelectorAll(".crow-focus").forEach(b => b.onclick = () => focusModel(visibles[+b.dataset.i].prod));
+  body.querySelectorAll(".crow-focus").forEach(b => b.onclick = () => focusModel(cards[+b.dataset.i][0].prod));
 }
 
 /* -------- Export CSV -------- */
@@ -1029,8 +1059,6 @@ async function init(){
 
   // listeners
   el("search").addEventListener("input", e => { ui.search = e.target.value; renderActiveBar(); syncCmpControls(); renderLista(); });
-  el("cmpSearch").addEventListener("input", e => { ui.search = e.target.value; if(el("search"))el("search").value=e.target.value; afterFilterChange(); });
-  el("modeSeg").querySelectorAll("button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
   el("btnFilters").onclick = () => {
     ui.panelAbierto = !ui.panelAbierto;
     el("filterPanel").classList.toggle("hidden", !ui.panelAbierto);
@@ -1044,7 +1072,7 @@ async function init(){
   el("btnResume").onclick = reanudar;
   el("btnReset").onclick = reiniciar;
   el("btnClose").onclick = cerrarYComparar;
-  el("cmpBack").onclick = () => { el("cmpView").classList.add("hidden"); };
+  el("cmpBack").onclick = () => { el("cmpView").classList.add("hidden"); el("app").classList.remove("hidden"); renderLista(); };
   el("cmpExport").onclick = exportarCSV;
   el("cmpNuevo").onclick = reiniciar;
 }
