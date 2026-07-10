@@ -408,10 +408,21 @@ async function leerInventario(){
 }
 
 /* -------- Helpers de producto -------- */
+/* misma normalización de Dropbox que la app principal (por fotos viejas en crudo) */
+function normalizarFotoUrl(url){
+  if(!url) return url;
+  if(url.indexOf("dropbox.com") >= 0){
+    url = url.replace(/[?&]dl=\d/, m => m[0]==="?" ? "?raw=1" : "&raw=1");
+    if(url.indexOf("raw=1") < 0){ url += url.indexOf("?")>=0 ? "&raw=1" : "?raw=1"; }
+    url = url.replace("www.dropbox.com", "dl.dropboxusercontent.com");
+  }
+  return url;
+}
 function fotoPrincipal(p){
   const fs = Array.isArray(p.fotos) ? p.fotos : [];
   const pr = fs.find(f => f && f.principal && f.url);
-  return (pr && pr.url) || (fs[0] && fs[0].url) || null;
+  const u = (pr && pr.url) || (fs[0] && fs[0].url) || null;
+  return u ? normalizarFotoUrl(u) : null;
 }
 /* devuelve <img> o el placeholder; descarta URLs blob: que no cargan fuera de su página */
 function thumbHtmlUrl(url){
@@ -632,16 +643,14 @@ function productosFiltrados(){
   });
 }
 
-/* clave de modelo = TODAS las variables MENOS la talla (id, stk y fotos no son variables) */
+/* clave de modelo = misma agrupación que la app principal (claveModelo):
+   eq, col, dor, ver, año + extras ordenados. NO incluye talla, soloTienda ni fechaIngreso. */
 function modelKey(p){
-  const skip = new Set(["id","tal","stk","fotos","extras"]);
-  const base = Object.keys(p).filter(k => !skip.has(k)).sort()
-    .map(k => k+"="+(p[k]==null?"":String(p[k]).trim())).join("|");
   let ex = "";
   if(p.extras && typeof p.extras==="object"){
-    ex = Object.keys(p.extras).sort().map(k => "x:"+k+"="+String(p.extras[k]).trim()).join("|");
+    ex = Object.keys(p.extras).sort().map(k => k+":"+p.extras[k]).join("|");
   }
-  return base + "||" + ex;
+  return [p.eq||"", p.col||"", p.dor||"", p.ver||"", p.año||"", ex].join("§");
 }
 
 function renderLista(){
