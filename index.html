@@ -55,6 +55,9 @@
   .h-title{font-weight:800;font-size:16px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
   .h-title small{font-weight:600;opacity:.85;font-size:12px}
   .h-status{font-size:12px;opacity:.95;margin-top:2px}
+  .h-sync{font-size:11px;margin-top:3px;font-weight:700;opacity:.95}
+  .h-sync.ok{color:#c9f7dd}
+  .h-sync.warn{color:#ffe0a3}
   .badge-count{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
     padding:3px 9px;border-radius:999px;font-weight:700;font-size:12px;white-space:nowrap}
 
@@ -293,6 +296,7 @@
         <div>
           <div class="h-title">📋 Conteo físico <small>Variedades Jared</small></div>
           <div class="h-status" id="status">—</div>
+          <div class="h-sync" id="syncStatus">Conectando…</div>
         </div>
         <div class="badge-count" id="totalBadge">0 uds</div>
       </div>
@@ -355,7 +359,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 /* ============================================================
    ⬇️  PEGÁ AQUÍ TU CONFIG DE FIREBASE (proyecto variedades-jared)
@@ -373,12 +377,14 @@ const firebaseConfig = {
 const COLECCION = "jared";
 const DOCUMENTO = "datos";
 const CAMPO_INV = "inv";
+const DOC_BORRADOR = "conteo_borrador";   // documento APARTE para el conteo (nunca toca 'datos'/'inv')
 const LS_KEY = "conteo_fisico_jared_v1";
+const deviceId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 /* ============================================================ */
 
 let db;
 let productos = [];                 // inventario cargado al abrir (para mostrar tarjetas)
-let estado = { fisico:{}, tramite:{}, pend:{}, startedAt:null, updatedAt:null };
+let estado = { fisico:{}, tramite:{}, pend:{}, ts:{}, resetAt:0, startedAt:null, updatedAt:null };
 let ui = { search:"", talla:"__all__", mode:"fisico", soloSinContar:false,
            filters:{}, exclusions:[], excPick:{key:null,val:"__none__"}, panelAbierto:false };
 const EMPTY = "__empty__";  // sentinela para "(Sin valor)"
@@ -395,13 +401,101 @@ function cargarEstado(){
   if(!estado.fisico) estado.fisico={};
   if(!estado.tramite) estado.tramite={};
   if(!estado.pend) estado.pend={};
+  if(!estado.ts) estado.ts={};
+  if(estado.resetAt == null) estado.resetAt = 0;
+  // dar marca de tiempo a conteos previos que no la tenían (para protegerlos en la sync)
+  const base = estado.updatedAt || Date.now();
+  for(const id in estado.fisico){ if(estado.ts[id]==null) estado.ts[id] = base; }
 }
 function guardarEstado(){
   estado.updatedAt = Date.now();
   if(!estado.startedAt) estado.startedAt = estado.updatedAt;
+  guardarLocalSolo();
+}
+function guardarLocalSolo(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(estado)); }catch(e){ console.warn(e); }
 }
 const contadoTotal = id => (estado.fisico[id]||0) + (estado.tramite[id]||0);
+
+/* ============================================================
+   SINCRONIZACIÓN EN LA NUBE  (documento aparte: jared/conteo_borrador)
+   NUNCA toca 'datos' ni 'inv'. Fusiona por variante con marca de tiempo.
+   ============================================================ */
+let syncActivo = false;
+function setSyncStatus(estado_){
+  const e = el("syncStatus"); if(!e) return;
+  if(estado_==="ok"){ e.textContent = "☁️ Sincronizado"; e.className = "h-sync ok"; }
+  else if(estado_==="local"){ e.textContent = "⚠️ Solo en este dispositivo"; e.className = "h-sync warn"; }
+  else { e.textContent = "Conectando…"; e.className = "h-sync"; }
+}
+/* fusión: para cada variante gana la marca de tiempo más reciente; se descarta lo anterior a un reset */
+function mergeEstados(a, b){
+  const resetAt = Math.max(a.resetAt||0, b.resetAt||0);
+  const fisico = {}, ts = {};
+  const ids = new Set([...Object.keys(a.fisico||{}), ...Object.keys(b.fisico||{})]);
+  for(const id of ids){
+    const ta = (a.ts && a.ts[id]) || 0;
+    const tb = (b.ts && b.ts[id]) || 0;
+    const useA = ta >= tb;
+    const t = useA ? ta : tb;
+    const val = useA ? (a.fisico||{})[id] : (b.fisico||{})[id];
+    if(t <= resetAt) continue;      // anterior a un reset global -> se descarta
+    if(val == null) continue;
+    fisico[id] = val; ts[id] = t;
+  }
+  return { fisico, ts, resetAt };
+}
+function igualConteo(a, b){
+  if((a.resetAt||0) !== (b.resetAt||0)) return false;
+  const ka = Object.keys(a.fisico||{}), kb = Object.keys(b.fisico||{});
+  if(ka.length !== kb.length) return false;
+  for(const id of ka){ if((a.fisico||{})[id] !== (b.fisico||{})[id]) return false; }
+  return true;
+}
+let pushTimer = null, pushPend = null;
+function pushCloud(snapEstado){
+  pushPend = { fisico:snapEstado.fisico, ts:snapEstado.ts, resetAt:snapEstado.resetAt };
+  if(pushTimer) return;
+  pushTimer = setTimeout(async () => {
+    pushTimer = null;
+    const s = pushPend;
+    try{
+      await setDoc(doc(db, COLECCION, DOC_BORRADOR),
+        { data: JSON.stringify({ fisico:s.fisico, ts:s.ts, resetAt:s.resetAt, updatedAt:Date.now(), device:deviceId }) },
+        { merge:true });
+      if(syncActivo) setSyncStatus("ok");
+    }catch(e){ console.warn("pushCloud", e); setSyncStatus("local"); }
+  }, 600);
+}
+function empujarConteo(){
+  if(!syncActivo) return;
+  pushCloud({ fisico:estado.fisico, ts:estado.ts, resetAt:estado.resetAt });
+}
+function iniciarSync(){
+  try{
+    onSnapshot(doc(db, COLECCION, DOC_BORRADOR), snap => {
+      try{
+        let cloud = { fisico:{}, ts:{}, resetAt:0 };
+        if(snap.exists() && snap.data().data){
+          const c = JSON.parse(snap.data().data);
+          cloud = { fisico:c.fisico||{}, ts:c.ts||{}, resetAt:c.resetAt||0 };
+        }
+        const local = { fisico:estado.fisico, ts:estado.ts, resetAt:estado.resetAt };
+        const merged = mergeEstados(local, cloud);
+        if(!igualConteo(merged, local)){
+          estado.fisico = merged.fisico; estado.ts = merged.ts; estado.resetAt = merged.resetAt;
+          guardarLocalSolo();
+          renderLista(); actualizarTotales();
+        }
+        if(!igualConteo(merged, cloud) || (merged.resetAt||0)!==(cloud.resetAt||0)){
+          pushCloud(merged);   // la nube estaba vacía o más vieja -> subir lo nuestro
+        }
+        syncActivo = true;
+        setSyncStatus("ok");
+      }catch(e){ console.warn("sync snapshot", e); setSyncStatus("local"); }
+    }, err => { console.warn("onSnapshot", err); setSyncStatus("local"); });
+  }catch(e){ console.warn("iniciarSync", e); setSyncStatus("local"); }
+}
 
 /* -------- Firebase (SOLO LECTURA) -------- */
 async function leerInventario(){
@@ -776,8 +870,10 @@ function aplicar(id){
   const d = estado.pend[id]||0;
   if(!d) return;
   estado.fisico[id] = Math.max(0, (estado.fisico[id]||0) + d);
+  estado.ts[id] = Date.now();
   estado.pend[id] = 0;
   guardarEstado();
+  empujarConteo();
   actualizarTarjeta(id);
   actualizarPend(id);
   actualizarTotales();
@@ -1103,8 +1199,10 @@ function reiniciar(){
   const uds = productos.reduce((s,p)=>s+contadoTotal(p.id),0);
   if(!confirm(`¿Borrar el conteo actual? Se perderán ${uds} unidades contadas en este dispositivo. Firebase NO se toca.`)) return;
   if(!confirm(`Confirmá una vez más: esto NO se puede deshacer. ¿Borrar el conteo de ${uds} unidades?`)) return;
-  estado = { fisico:{}, tramite:{}, pend:{}, startedAt:Date.now(), updatedAt:Date.now() };
+  const now = Date.now();
+  estado = { fisico:{}, tramite:{}, pend:{}, ts:{}, resetAt:now, startedAt:now, updatedAt:now };
   guardarEstado();
+  empujarConteo();
   el("cmpView").classList.add("hidden");
   renderTallaChips(); renderActiveBar(); renderLista(); actualizarTotales();
 }
@@ -1147,6 +1245,8 @@ async function init(){
   renderActiveBar();
   renderLista();
   actualizarTotales();
+  setSyncStatus("");
+  iniciarSync();
 
   // listeners
   el("search").addEventListener("input", e => { ui.search = e.target.value; renderActiveBar(); syncCmpControls(); renderLista(); });
