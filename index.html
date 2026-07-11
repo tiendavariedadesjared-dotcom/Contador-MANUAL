@@ -107,6 +107,9 @@
   .excl-chip .x{font-size:14px;font-weight:800}
   .ab-chip.exc{background:var(--amber-bg);color:var(--amber);border-color:var(--amber)}
   .cmp-filters .search{margin-bottom:8px}
+  .cmp-solo{width:100%;margin:2px 0 8px;border:1px solid var(--line);background:var(--card);
+    border-radius:10px;padding:10px;font-size:13px;font-weight:800;color:var(--ink-soft)}
+  .cmp-solo.on{background:var(--pitch);border-color:var(--pitch);color:#fff}
   .crow-focus{display:inline-block;margin-top:5px;background:transparent;border:1px solid var(--line);
     border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;color:var(--ink-soft)}
 
@@ -337,6 +340,7 @@
     <select id="cmpEquipo" class="search"></select>
     <div id="cmpActiveBar" class="active-bar hidden"></div>
     <div class="chips" id="cmpTallaChips"></div>
+    <button id="cmpSoloContadas" class="cmp-solo">🎯 Solo las tarjetas que conté</button>
     <div class="chips" id="cmpChips"></div>
   </div>
   <div class="cmp-body" id="cmpBody"></div>
@@ -876,6 +880,7 @@ async function cerrarYComparar(){
 }
 
 let cmpVisibles = [];
+let cmpSoloContadas = false;
 function renderCmpTallaChips(){
   const cont = el("cmpTallaChips"); if(!cont) return;
   const tallas = tallasUnicas();
@@ -912,7 +917,14 @@ function focusModel(p){
 }
 
 function renderComparativo(){
-  const base = cmpData.filas.filter(f => pasaFiltrosBase(f.prod));
+  let base = cmpData.filas.filter(f => pasaFiltrosBase(f.prod));
+  if(cmpSoloContadas){
+    const contadas = new Set();
+    productos.forEach(p => { if(contadoTotal(p.id) > 0) contadas.add(modelKey(p)); });
+    base = base.filter(f => contadas.has(modelKey(f.prod)));
+  }
+  const btnSolo = el("cmpSoloContadas");
+  if(btnSolo) btnSolo.classList.toggle("on", cmpSoloContadas);
   let totalContado=0, totalSistema=0;
   base.forEach(f => { totalContado += f.contado; totalSistema += f.sistema; });
   const conDif = base.filter(f=>f.cat!=="ok").length;
@@ -1115,6 +1127,7 @@ async function init(){
   el("cmpBack").onclick = () => { el("cmpView").classList.add("hidden"); el("app").classList.remove("hidden"); renderLista(); };
   el("cmpExport").onclick = exportarCSV;
   el("cmpNuevo").onclick = reiniciar;
+  el("cmpSoloContadas").onclick = () => { cmpSoloContadas = !cmpSoloContadas; renderComparativo(); };
 }
 
 init();
