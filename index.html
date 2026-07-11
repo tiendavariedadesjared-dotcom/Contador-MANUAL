@@ -345,7 +345,10 @@
   </div>
   <div class="cmp-body" id="cmpBody"></div>
   <div class="cmp-actions">
-    <button id="cmpExport" class="exp">Exportar CSV</button>
+    <button id="cmpCorrecciones" class="exp">⬇️ Exportar correcciones (.json para la app)</button>
+  </div>
+  <div class="cmp-actions">
+    <button id="cmpExport">Exportar CSV</button>
     <button id="cmpNuevo">Nuevo conteo (limpiar)</button>
   </div>
 </div>
@@ -1033,6 +1036,42 @@ function renderComparativo(){
 }
 
 /* -------- Export CSV -------- */
+function exportarCorrecciones(){
+  if(!cmpData){ alert("Primero cerrá el conteo para comparar."); return; }
+  const items = cmpData.filas.filter(f => f.contado > 0).map(f => ({
+    id: f.id,
+    eq: f.prod.eq ?? "",
+    dor: f.prod.dor ?? "",
+    tal: f.prod.tal ?? "",
+    ver: f.prod.ver ?? "",
+    col: f.prod.col ?? "",
+    "año": f.prod["año"] ?? "",
+    extras: f.prod.extras || {},
+    stk_sistema: f.sistema,
+    contado: f.contado,
+    nuevo_stk: f.contado,
+    delta: f.contado - f.sistema
+  }));
+  if(items.length===0){ alert("No hay variantes contadas para exportar."); return; }
+  const cambios = items.filter(i => i.delta !== 0).length;
+  const payload = {
+    tipo: "correccion_inventario_conteo_fisico",
+    version: 1,
+    generado: new Date().toISOString(),
+    instruccion: "Para cada objeto de 'correcciones': buscar en INV el item cuyo id coincida y ESTABLECER su stk = nuevo_stk (valor absoluto, NO sumar delta). Si no se encuentra por id, emparejar por eq+dor+tal+ver+col+año+extras. No modificar ninguna variante que no esté en esta lista. Registrar cada cambio en la bitácora como tipo 'correccion'.",
+    total_variantes_contadas: items.length,
+    variantes_con_cambio: cambios,
+    correcciones: items
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json;charset=utf-8"});
+  const a = document.createElement("a");
+  const fecha = new Date().toISOString().slice(0,16).replace(/[:T]/g,"-");
+  a.href = URL.createObjectURL(blob);
+  a.download = `correcciones_conteo_${fecha}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function exportarCSV(){
   const filas = (cmpVisibles && cmpVisibles.length) ? cmpVisibles : cmpData.filas;
   const head = ["estado","id","equipo","dorsal","talla","version","color","año","extras","contado_fisico","contado_tramite","contado_total","sistema","diferencia"];
@@ -1126,6 +1165,7 @@ async function init(){
   el("btnClose").onclick = cerrarYComparar;
   el("cmpBack").onclick = () => { el("cmpView").classList.add("hidden"); el("app").classList.remove("hidden"); renderLista(); };
   el("cmpExport").onclick = exportarCSV;
+  el("cmpCorrecciones").onclick = exportarCorrecciones;
   el("cmpNuevo").onclick = reiniciar;
   el("cmpSoloContadas").onclick = () => { cmpSoloContadas = !cmpSoloContadas; renderComparativo(); };
 }
