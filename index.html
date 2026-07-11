@@ -115,6 +115,13 @@
   .cmp-solo.on{background:var(--pitch);border-color:var(--pitch);color:#fff}
   .crow-focus{display:inline-block;margin-top:5px;background:transparent;border:1px solid var(--line);
     border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;color:var(--ink-soft)}
+  .crow-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .crow-drop{background:var(--amber-bg);border:1px solid var(--amber);border-radius:8px;
+    padding:3px 8px;font-size:11px;font-weight:700;color:var(--amber)}
+  .desc-bar{background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;padding:8px 10px;
+    margin-bottom:10px;font-size:12px;font-weight:700;color:var(--amber)}
+  .desc-bar button{margin-left:6px;background:var(--card);border:1px solid var(--amber);color:var(--amber);
+    border-radius:8px;padding:3px 9px;font-size:12px;font-weight:800}
 
   /* ---------- Comparativo agrupado por tarjeta ---------- */
   .ccard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px;box-shadow:var(--shadow)}
@@ -973,6 +980,7 @@ async function cerrarYComparar(){
   el("app").classList.remove("hidden");
   cmpData = construirComparativo(invActual);
   cmpFiltro = "dif";
+  cmpDescartadas = new Set();
   renderComparativo();
   el("cmpView").classList.remove("hidden");
   window.scrollTo(0,0);
@@ -980,6 +988,7 @@ async function cerrarYComparar(){
 
 let cmpVisibles = [];
 let cmpSoloContadas = false;
+let cmpDescartadas = new Set();   // modelKeys quitados del reporte/export
 function renderCmpTallaChips(){
   const cont = el("cmpTallaChips"); if(!cont) return;
   const tallas = tallasUnicas();
@@ -1021,6 +1030,9 @@ function renderComparativo(){
     const contadas = new Set();
     productos.forEach(p => { if(contadoTotal(p.id) > 0) contadas.add(modelKey(p)); });
     base = base.filter(f => contadas.has(modelKey(f.prod)));
+  }
+  if(cmpDescartadas.size){
+    base = base.filter(f => !cmpDescartadas.has(modelKey(f.prod)));
   }
   const btnSolo = el("cmpSoloContadas");
   if(btnSolo) btnSolo.classList.toggle("on", cmpSoloContadas);
@@ -1120,7 +1132,10 @@ function renderComparativo(){
           <div class="team">${escapeHtml(rep.eq||"—")}${rep.dor?`<span class="dor">#${escapeHtml(rep.dor)}</span>`:""}</div>
           <div class="meta">${[rep.ver,rep.col,rep.año].filter(Boolean).map(escapeHtml).join(' <span class="sep">·</span> ')||"—"}</div>
           ${ex?`<div class="extras">${escapeHtml(ex)}</div>`:""}
-          <button class="crow-focus" data-i="${idx}">🎯 solo este modelo</button>
+          <div class="crow-btns">
+            <button class="crow-focus" data-i="${idx}">🎯 solo este modelo</button>
+            <button class="crow-drop" data-i="${idx}">🗑 Quitar del reporte</button>
+          </div>
         </div>
       </div>
       <div class="csizes">${filas}</div>
@@ -1128,13 +1143,26 @@ function renderComparativo(){
     </div>`;
   }).join("");
   body.querySelectorAll(".crow-focus").forEach(b => b.onclick = () => focusModel(cards[+b.dataset.i][0].prod));
+  body.querySelectorAll(".crow-drop").forEach(b => b.onclick = () => {
+    cmpDescartadas.add(modelKey(cards[+b.dataset.i][0].prod));
+    renderComparativo();
+  });
+  if(cmpDescartadas.size){
+    const bar = document.createElement("div");
+    bar.className = "desc-bar";
+    bar.innerHTML = `${cmpDescartadas.size} tarjeta(s) quitada(s) del reporte · <button id="cmpRestaurar">Restaurar todas</button>`;
+    body.prepend(bar);
+    el("cmpRestaurar").onclick = () => { cmpDescartadas.clear(); renderComparativo(); };
+  }
   attachImgFallback(body);
 }
 
 /* -------- Export CSV -------- */
 function exportarCorrecciones(){
   if(!cmpData){ alert("Primero cerrá el conteo para comparar."); return; }
-  const items = cmpData.filas.filter(f => f.contado > 0).map(f => ({
+  const items = cmpData.filas
+    .filter(f => f.contado > 0 && !cmpDescartadas.has(modelKey(f.prod)))
+    .map(f => ({
     id: f.id,
     eq: f.prod.eq ?? "",
     dor: f.prod.dor ?? "",
