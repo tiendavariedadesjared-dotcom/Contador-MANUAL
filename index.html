@@ -231,7 +231,25 @@
   .pause p{margin:0;opacity:.8;font-size:14px;max-width:280px}
   .pause .big{font-size:15px;font-weight:800;background:#fff;color:var(--ink);border:0;border-radius:14px;padding:15px 34px}
 
-  /* ---------- Comparison ---------- */
+  /* ---------- Pendientes sin aplicar ---------- */
+  .pend-modal{position:fixed;inset:0;z-index:65;background:rgba(15,26,23,.6);
+    display:flex;align-items:center;justify-content:center;padding:16px}
+  .pend-box{background:var(--card);border-radius:16px;width:100%;max-width:460px;max-height:85vh;
+    display:flex;flex-direction:column;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .pend-box h2{margin:0 0 4px;font-size:18px;color:var(--ink)}
+  .pend-box p{margin:0 0 12px;font-size:13px;color:var(--ink-soft)}
+  .pend-list{overflow-y:auto;flex:1;margin-bottom:12px}
+  .pend-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line)}
+  .pend-info{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink)}
+  .pend-val{flex:0 0 auto;font-weight:800;font-size:16px}
+  .pend-val.pos{color:var(--pitch)}
+  .pend-val.neg{color:var(--amber)}
+  .pend-apply{flex:0 0 auto;background:var(--pitch);color:#fff;border:0;border-radius:9px;
+    padding:8px 14px;font-weight:800;font-size:13px}
+  .pend-btns{display:flex;flex-direction:column;gap:8px}
+  .pend-btns button{border-radius:11px;padding:12px;font-weight:800;font-size:14px}
+  .pend-primary{background:var(--pitch);color:#fff;border:0}
+  .pend-ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
   .cmp{position:fixed;inset:0;z-index:70;background:var(--bg);overflow-y:auto}
   .cmp-head{position:sticky;top:0;z-index:10;background:var(--ink);color:#fff;padding:12px 14px}
   .cmp-head .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -267,6 +285,11 @@
 
   .cmp-actions{display:flex;gap:8px;padding:0 12px 20px}
   .cmp-actions button{flex:1;border-radius:12px;padding:12px;font-weight:800;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .exp-modo{padding:4px 12px 8px}
+  .exp-modo-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--slate);margin-bottom:6px}
+  .exp-modo .seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .exp-modo .seg button{flex:1;border:0;background:transparent;padding:9px 6px;font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.2}
+  .exp-modo .seg button.on{background:var(--ink);color:#fff}
   .cmp-actions .exp{background:var(--pitch);color:#fff;border-color:var(--pitch)}
 
   /* ---------- Toast / overlay generic ---------- */
@@ -338,7 +361,19 @@
   <button class="big" id="btnResume">Reanudar conteo</button>
 </div>
 
-<!-- ====== COMPARISON VIEW ====== -->
+<!-- ====== PENDIENTES SIN APLICAR ====== -->
+<div id="pendModal" class="pend-modal hidden">
+  <div class="pend-box">
+    <h2>⚠️ Conteos sin aplicar</h2>
+    <p>Estas tarjetas tienen un número cargado en el contador que todavía no sumaste. Aplicalos antes de comparar para no perderlos.</p>
+    <div id="pendList" class="pend-list"></div>
+    <div class="pend-btns">
+      <button id="pendAplicarTodos" class="pend-primary">Aplicar todos y comparar</button>
+      <button id="pendSinAplicar" class="pend-ghost">Comparar sin aplicar</button>
+      <button id="pendCancelar" class="pend-ghost">Cancelar</button>
+    </div>
+  </div>
+</div>
 <div id="cmpView" class="cmp hidden">
   <div class="cmp-head">
     <div class="top">
@@ -355,6 +390,13 @@
     <div class="chips" id="cmpChips"></div>
   </div>
   <div class="cmp-body" id="cmpBody"></div>
+  <div class="exp-modo">
+    <div class="exp-modo-lbl">Tallas que NO conté de una tarjeta:</div>
+    <div class="seg" id="expModoSeg">
+      <button data-modo="cero" class="on">Poner en 0 (tarjeta completa)</button>
+      <button data-modo="solo">No tocar (solo lo contado)</button>
+    </div>
+  </div>
   <div class="cmp-actions">
     <button id="cmpCorrecciones" class="exp">⬇️ Exportar correcciones (.json para la app)</button>
   </div>
@@ -413,6 +455,7 @@ function cargarEstado(){
   // dar marca de tiempo a conteos previos que no la tenían (para protegerlos en la sync)
   const base = estado.updatedAt || Date.now();
   for(const id in estado.fisico){ if(estado.ts[id]==null) estado.ts[id] = base; }
+  for(const id in estado.pend){ if(estado.ts[id]==null) estado.ts[id] = base; }
 }
 function guardarEstado(){
   estado.updatedAt = Date.now();
@@ -438,37 +481,46 @@ function setSyncStatus(estado_){
 /* fusión: para cada variante gana la marca de tiempo más reciente; se descarta lo anterior a un reset */
 function mergeEstados(a, b){
   const resetAt = Math.max(a.resetAt||0, b.resetAt||0);
-  const fisico = {}, ts = {};
-  const ids = new Set([...Object.keys(a.fisico||{}), ...Object.keys(b.fisico||{})]);
+  const fisico = {}, pend = {}, ts = {};
+  const ids = new Set([
+    ...Object.keys(a.fisico||{}), ...Object.keys(b.fisico||{}),
+    ...Object.keys(a.pend||{}),   ...Object.keys(b.pend||{})
+  ]);
   for(const id of ids){
     const ta = (a.ts && a.ts[id]) || 0;
     const tb = (b.ts && b.ts[id]) || 0;
-    const useA = ta >= tb;
-    const t = useA ? ta : tb;
-    const val = useA ? (a.fisico||{})[id] : (b.fisico||{})[id];
-    if(t <= resetAt) continue;      // anterior a un reset global -> se descarta
-    if(val == null) continue;
-    fisico[id] = val; ts[id] = t;
+    const src = ta >= tb ? a : b;        // gana la marca más reciente; fisico y pendiente van juntos
+    const t = Math.max(ta, tb);
+    if(t <= resetAt) continue;           // anterior a un reset global -> se descarta
+    const fv = (src.fisico||{})[id] || 0;
+    const pv = (src.pend||{})[id] || 0;
+    if(fv === 0 && pv === 0) continue;
+    if(fv !== 0) fisico[id] = fv;
+    if(pv !== 0) pend[id] = pv;
+    ts[id] = t;
   }
-  return { fisico, ts, resetAt };
+  return { fisico, pend, ts, resetAt };
 }
 function igualConteo(a, b){
   if((a.resetAt||0) !== (b.resetAt||0)) return false;
-  const ka = Object.keys(a.fisico||{}), kb = Object.keys(b.fisico||{});
-  if(ka.length !== kb.length) return false;
-  for(const id of ka){ if((a.fisico||{})[id] !== (b.fisico||{})[id]) return false; }
+  const claves = new Set([...Object.keys(a.fisico||{}),...Object.keys(b.fisico||{}),
+                          ...Object.keys(a.pend||{}),...Object.keys(b.pend||{})]);
+  for(const id of claves){
+    if(((a.fisico||{})[id]||0) !== ((b.fisico||{})[id]||0)) return false;
+    if(((a.pend||{})[id]||0) !== ((b.pend||{})[id]||0)) return false;
+  }
   return true;
 }
 let pushTimer = null, pushPend = null;
 function pushCloud(snapEstado){
-  pushPend = { fisico:snapEstado.fisico, ts:snapEstado.ts, resetAt:snapEstado.resetAt };
+  pushPend = { fisico:snapEstado.fisico, pend:snapEstado.pend, ts:snapEstado.ts, resetAt:snapEstado.resetAt };
   if(pushTimer) return;
   pushTimer = setTimeout(async () => {
     pushTimer = null;
     const s = pushPend;
     try{
       await setDoc(doc(db, COLECCION, DOC_BORRADOR),
-        { data: JSON.stringify({ fisico:s.fisico, ts:s.ts, resetAt:s.resetAt, updatedAt:Date.now(), device:deviceId }) },
+        { data: JSON.stringify({ fisico:s.fisico, pend:s.pend, ts:s.ts, resetAt:s.resetAt, updatedAt:Date.now(), device:deviceId }) },
         { merge:true });
       if(syncActivo) setSyncStatus("ok");
     }catch(e){ console.warn("pushCloud", e); setSyncStatus("local"); }
@@ -476,21 +528,21 @@ function pushCloud(snapEstado){
 }
 function empujarConteo(){
   if(!syncActivo) return;
-  pushCloud({ fisico:estado.fisico, ts:estado.ts, resetAt:estado.resetAt });
+  pushCloud({ fisico:estado.fisico, pend:estado.pend, ts:estado.ts, resetAt:estado.resetAt });
 }
 function iniciarSync(){
   try{
     onSnapshot(doc(db, COLECCION, DOC_BORRADOR), snap => {
       try{
-        let cloud = { fisico:{}, ts:{}, resetAt:0 };
+        let cloud = { fisico:{}, pend:{}, ts:{}, resetAt:0 };
         if(snap.exists() && snap.data().data){
           const c = JSON.parse(snap.data().data);
-          cloud = { fisico:c.fisico||{}, ts:c.ts||{}, resetAt:c.resetAt||0 };
+          cloud = { fisico:c.fisico||{}, pend:c.pend||{}, ts:c.ts||{}, resetAt:c.resetAt||0 };
         }
-        const local = { fisico:estado.fisico, ts:estado.ts, resetAt:estado.resetAt };
+        const local = { fisico:estado.fisico, pend:estado.pend, ts:estado.ts, resetAt:estado.resetAt };
         const merged = mergeEstados(local, cloud);
         if(!igualConteo(merged, local)){
-          estado.fisico = merged.fisico; estado.ts = merged.ts; estado.resetAt = merged.resetAt;
+          estado.fisico = merged.fisico; estado.pend = merged.pend; estado.ts = merged.ts; estado.resetAt = merged.resetAt;
           guardarLocalSolo();
           renderLista(); actualizarTotales();
         }
@@ -870,7 +922,9 @@ function cardHtml(p){
 /* -------- Contar (por lotes) -------- */
 function stage(id, delta){
   estado.pend[id] = (estado.pend[id]||0) + delta;
+  estado.ts[id] = Date.now();
   guardarEstado();
+  empujarConteo();
   actualizarPend(id);
 }
 function aplicar(id){
@@ -970,12 +1024,51 @@ function construirComparativo(invActual){
 let cmpData = null;
 let cmpFiltro = "dif"; // dif | all | ok | faltan | sobran | nocont
 
-async function cerrarYComparar(){
+function pendientesSinAplicar(){
+  const out = [];
+  for(const id in estado.pend){
+    const d = estado.pend[id] || 0;
+    if(d !== 0){
+      const prod = productos.find(p => String(p.id) === String(id)) || { id, eq:"(desconocido)" };
+      out.push({ id, pend:d, prod });
+    }
+  }
+  return out;
+}
+function mostrarPendientes(lista){
+  const cont = el("pendList");
+  cont.innerHTML = lista.map(p => {
+    const info = [p.prod.eq, p.prod.dor?("#"+p.prod.dor):"", p.prod.tal?("T."+p.prod.tal):"",
+                  p.prod.ver, p.prod.col, p.prod["año"]].filter(Boolean).map(escapeHtml).join(" · ");
+    return `<div class="pend-row">
+      <div class="pend-info">${info}</div>
+      <div class="pend-val ${p.pend>0?'pos':'neg'}">${p.pend>0?'+'+p.pend:p.pend}</div>
+      <button class="pend-apply" data-id="${escapeAttr(p.id)}">Aplicar</button>
+    </div>`;
+  }).join("");
+  cont.querySelectorAll(".pend-apply").forEach(b => b.onclick = () => {
+    aplicar(b.dataset.id);
+    const rest = pendientesSinAplicar();
+    if(rest.length === 0){ el("pendModal").classList.add("hidden"); procederCierre(); }
+    else mostrarPendientes(rest);
+  });
+}
+function cerrarYComparar(){
+  const pend = pendientesSinAplicar();
+  if(pend.length > 0){
+    mostrarPendientes(pend);
+    el("pendModal").classList.remove("hidden");
+    return;
+  }
+  procederCierre();
+}
+async function procederCierre(){
+  el("pendModal").classList.add("hidden");
   mostrarPantalla("Releyendo el stock actual de Firebase para comparar…", false);
   let invActual;
   try{ invActual = await leerInventario(); }
   catch(e){
-    mostrarPantalla("No se pudo releer el stock: "+e.message, true, cerrarYComparar);
+    mostrarPantalla("No se pudo releer el stock: "+e.message, true, procederCierre);
     return;
   }
   el("screen").classList.add("hidden");
@@ -991,6 +1084,7 @@ async function cerrarYComparar(){
 let cmpVisibles = [];
 let cmpSoloContadas = false;
 let cmpDescartadas = new Set();   // modelKeys quitados del reporte/export
+let expModo = "cero";             // "cero" = tarjeta completa (no contadas -> 0); "solo" = solo tallas contadas
 function renderCmpTallaChips(){
   const cont = el("cmpTallaChips"); if(!cont) return;
   const tallas = tallasUnicas();
@@ -1162,13 +1256,17 @@ function renderComparativo(){
 /* -------- Export CSV -------- */
 function exportarCorrecciones(){
   if(!cmpData){ alert("Primero cerrá el conteo para comparar."); return; }
-  // tarjetas (modelos) con al menos una talla contada
-  const modelosContados = new Set();
-  cmpData.filas.forEach(f => { if(f.contado > 0) modelosContados.add(modelKey(f.prod)); });
-  // incluir TODAS las tallas de esas tarjetas (las no contadas quedan en 0), menos las descartadas
-  const items = cmpData.filas
-    .filter(f => modelosContados.has(modelKey(f.prod)) && !cmpDescartadas.has(modelKey(f.prod)))
-    .map(f => ({
+  let filas;
+  if(expModo === "solo"){
+    // SOLO las tallas contadas (no toca las demás) -> ideal contando por talla
+    filas = cmpData.filas.filter(f => f.contado > 0 && !cmpDescartadas.has(modelKey(f.prod)));
+  } else {
+    // TARJETA COMPLETA: todas las tallas de las tarjetas con algo contado; no contadas -> 0
+    const modelosContados = new Set();
+    cmpData.filas.forEach(f => { if(f.contado > 0) modelosContados.add(modelKey(f.prod)); });
+    filas = cmpData.filas.filter(f => modelosContados.has(modelKey(f.prod)) && !cmpDescartadas.has(modelKey(f.prod)));
+  }
+  const items = filas.map(f => ({
     id: f.id,
     eq: f.prod.eq ?? "",
     dor: f.prod.dor ?? "",
@@ -1182,11 +1280,12 @@ function exportarCorrecciones(){
     nuevo_stk: f.contado,
     delta: f.contado - f.sistema
   }));
-  if(items.length===0){ alert("No hay tarjetas contadas para exportar."); return; }
+  if(items.length===0){ alert("No hay tallas contadas para exportar."); return; }
   const cambios = items.filter(i => i.delta !== 0).length;
   const aCero = items.filter(i => i.contado === 0).length;
-  if(!confirm(`Se exportarán ${items.length} variantes de las tarjetas que contaste (${cambios} con cambio).`
-    + (aCero ? `\n\n⚠️ ${aCero} talla(s) de esas tarjetas que NO contaste se pondrán en 0.` : "")
+  if(!confirm(`Se exportarán ${items.length} variantes (${cambios} con cambio).`
+    + (aCero ? `\n\n⚠️ ${aCero} talla(s) que NO contaste se pondrán en 0 (modo "tarjeta completa").` : "")
+    + (expModo==="solo" ? `\n\nModo "solo tallas contadas": no se toca ninguna otra talla.` : "")
     + `\n\n¿Continuar?`)) return;
   const payload = {
     tipo: "correccion_inventario_conteo_fisico",
@@ -1323,9 +1422,20 @@ async function init(){
   el("btnResume").onclick = reanudar;
   el("btnReset").onclick = reiniciar;
   el("btnClose").onclick = cerrarYComparar;
+  el("pendAplicarTodos").onclick = () => {
+    pendientesSinAplicar().forEach(p => aplicar(p.id));
+    el("pendModal").classList.add("hidden");
+    procederCierre();
+  };
+  el("pendSinAplicar").onclick = () => { el("pendModal").classList.add("hidden"); procederCierre(); };
+  el("pendCancelar").onclick = () => { el("pendModal").classList.add("hidden"); };
   el("cmpBack").onclick = () => { el("cmpView").classList.add("hidden"); el("app").classList.remove("hidden"); renderLista(); };
   el("cmpExport").onclick = exportarCSV;
   el("cmpCorrecciones").onclick = exportarCorrecciones;
+  el("expModoSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+    expModo = b.dataset.modo;
+    el("expModoSeg").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.modo===expModo));
+  });
   el("cmpNuevo").onclick = reiniciar;
   el("cmpSoloContadas").onclick = () => { cmpSoloContadas = !cmpSoloContadas; renderComparativo(); };
 }
