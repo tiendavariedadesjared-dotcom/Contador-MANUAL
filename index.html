@@ -171,9 +171,13 @@
     line-height:1}
   .cbtn.plus{background:var(--pitch);border-color:var(--pitch);color:#fff}
   .cbtn.plus.tramite{background:var(--sky);border-color:var(--sky)}
-  .cbtn:active{transform:scale(.94)}
+  .cbtn{transition:transform 140ms ease-out}
+  .cbtn:active{transform:scale(.96)}
   .cnum{min-width:34px;text-align:center;font-weight:800;font-size:19px}
   .cnum.counted{color:var(--pitch)}
+
+  .cnum,.c2-pend,.c2-total b,.mc-total b,.crow .nums,.sr-mid{font-variant-numeric:tabular-nums;
+    font-feature-settings:"tnum" 1}
 
   .empty{text-align:center;color:var(--slate);padding:40px 20px;font-size:14px}
 
@@ -207,7 +211,8 @@
     font-size:24px;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:center;line-height:1}
   .stg.plus{background:var(--pitch);border-color:var(--pitch);color:#fff}
   .stg.plus.tramite{background:var(--sky);border-color:var(--sky)}
-  .stg:active{transform:scale(.94)}
+  .stg{transition:transform 140ms ease-out}
+  .stg:active{transform:scale(.96)}
   .c2-pend{min-width:46px;text-align:center;font-weight:800;font-size:20px;color:var(--slate)}
   .c2-pend.pos{color:var(--pitch)}
   .c2-pend.neg{color:var(--amber)}
@@ -296,7 +301,7 @@
   .screen{position:fixed;inset:0;z-index:80;background:var(--bg);display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:14px;text-align:center;padding:28px}
   .spinner{width:38px;height:38px;border:3px solid var(--line);border-top-color:var(--pitch);
-    border-radius:50%;animation:spin 1s linear infinite}
+    border-radius:50%;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .screen p{color:var(--ink-soft);font-size:14px;margin:0;max-width:320px}
   .screen .err{color:var(--danger);font-weight:700}
@@ -306,7 +311,8 @@
     body{max-width:720px;margin:0 auto;background:var(--card)}
     .controls,.group-head,.cmp-filters{background:var(--card)}
   }
-  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}
+    .cbtn,.stg{transition:transform 140ms ease-out !important}}
 </style>
 </head>
 <body>
